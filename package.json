@@ -1,0 +1,10 @@
+{
+  "name": "release-bot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^0.19.0",
+    "lodash": "^4.17.11"
+  }
+}
