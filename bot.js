@@ -5,13 +5,15 @@ const ZenhubAPI = require("./zenhub");
 const GitHubAPI = require("./github");
 
 const ZENHUB_BOARD_ID = "191766420";
-const TO_RELEASE_PIPELINE_NAME = "Review/QA";
+const TO_RELEASE_PIPELINE_NAME = "New Issues";
 
 const owner = "krvajal";
 const repo = "release-bot";
 
 const zenhubClient = new ZenhubAPI();
 const githubClient = new GitHubAPI({ owner, repo });
+
+const releaseBranch = process.argv[2];
 
 zenhubClient
   .getBoard(ZENHUB_BOARD_ID)
@@ -43,21 +45,28 @@ zenhubClient
     return pullRequests;
   })
   .then(async pullRequests => {
-    const releaseBranch = "release/v5";
     console.log("Creating the release branch");
     await githubClient.createBranch("master", releaseBranch);
-    const operations = pullRequests.map(async pull => {
+
+    const processPull = async pull => {
       await githubClient.updatePullBase(pull.number, releaseBranch);
       //  merge the PR into the release branch
-
+      await sleep(2000);
       //
-      await githubClient.mergePull(pull.number);
-    });
+      return await githubClient.mergePull(pull.number);
+    };
 
-    return Promise.all(operations);
+    const operations = promiseSerial(
+      pullRequests.map(pull => () => processPull(pull))
+    );
+
+    await operations;
+    return { pullRequests, releaseBranch };
   })
-  .then(result => {
-    console.log(result);
+  .then(({ pullRequests, releaseBranch }) => {
+    githubClient.createPull(releaseBranch, "master", {
+      title: releaseBranch
+    });
   })
   .catch(err => {
     console.log(err);
@@ -68,3 +77,14 @@ zenhubClient
 function isPR(issue) {
   return issue.pull_request && issue.pull_request.url;
 }
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+const promiseSerial = funcs =>
+  funcs.reduce(
+    (promise, func) =>
+      promise.then(result => func().then(Array.prototype.concat.bind(result))),
+    Promise.resolve([])
+  );
