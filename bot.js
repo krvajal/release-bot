@@ -7,16 +7,16 @@ const { isPR, sleep, promiseSerial, getConfig } = require("./utils");
 
 const releaseBranch = process.argv[2];
 
-function run() {
+async function run() {
   const progress = ora();
 
-  const { repo, owner, board_id, to_deploy_pipeline } = getConfig();
+  const { repo, owner, to_deploy_pipeline } = getConfig();
 
   const zenhubClient = new ZenhubAPI();
   const githubClient = new GitHubAPI({ owner, repo });
-
+  const { id: repoId } = await githubClient.getRepoInfo();
   zenhubClient
-    .getBoard(board_id)
+    .getBoard(repoId)
     .then(board => {
       progress.start("Getting board data");
       return board.pipelines;
@@ -46,14 +46,14 @@ function run() {
       await githubClient.createBranch("master", releaseBranch);
       progress.succeed();
       const processPull = async pull => {
-        progress.succeed();
         progress.start(`Changing PR #${pull.number} base to release branch`);
         await githubClient.updatePullBase(pull.number, releaseBranch);
         //  merge the PR into the release branch
         await sleep(2000);
         progress.succeed();
         progress.start(`Merging PR #${pull.number} into release branch`);
-        return await githubClient.mergePull(pull.number);
+        await githubClient.mergePull(pull.number);
+        progress.succeed();
       };
 
       const operations = promiseSerial(

@@ -61,6 +61,12 @@ GitHubAPI.prototype.mergePull = function mergePull(pullNumber) {
   );
 };
 
+GitHubAPI.prototype.getRepoInfo = function getRepoInfo() {
+  return this.httpClient
+    .get(`/repos/${this.owner}/${this.repo}`)
+    .then(res => res.data);
+};
+
 GitHubAPI.prototype.createPull = function createPull(head, base, options) {
   return this.httpClient
     .post(`/repos/${this.owner}/${this.repo}/pulls`, {
