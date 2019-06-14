@@ -58,11 +58,13 @@ GitHubAPI.prototype.mergePull = function mergePull(pullNumber) {
 };
 
 GitHubAPI.prototype.createPull = function createPull(head, base, options) {
-  return this.httpClient.post(`/repos/${this.owner}/${this.repo}/pulls`, {
-    head,
-    base,
-    ...options
-  });
+  return this.httpClient
+    .post(`/repos/${this.owner}/${this.repo}/pulls`, {
+      head,
+      base,
+      ...options
+    })
+    .then(res => res.data);
 };
 
 module.exports = GitHubAPI;

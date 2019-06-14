@@ -1,90 +1,93 @@
 require("dotenv").config();
 const _ = require("lodash");
-
+const ora = require("ora");
 const ZenhubAPI = require("./zenhub");
 const GitHubAPI = require("./github");
-
-const ZENHUB_BOARD_ID = "191766420";
-const TO_RELEASE_PIPELINE_NAME = "New Issues";
-
-const owner = "krvajal";
-const repo = "release-bot";
-
-const zenhubClient = new ZenhubAPI();
-const githubClient = new GitHubAPI({ owner, repo });
+const { isPR, sleep, promiseSerial, getConfig } = require("./utils");
 
 const releaseBranch = process.argv[2];
 
-zenhubClient
-  .getBoard(ZENHUB_BOARD_ID)
-  .then(board => {
-    console.log("Getting board data");
-    return board.pipelines;
-  })
-  .then(pipelines => {
-    console.log("Getting release pipeline");
-    return pipelines.find(
-      pipeline => pipeline.name == TO_RELEASE_PIPELINE_NAME
-    );
-  })
-  .then(releasePipeline => {
-    console.log("Getting issues in release pipeline");
-    console.log(releasePipeline.issues);
-    return Promise.all(
-      releasePipeline.issues.map(zenhubIssue =>
-        githubClient.getIssue(zenhubIssue.issue_number)
-      )
-    );
-  })
-  .then(issues => {
-    const [pullRequests, normalIssues] = _.partition(issues, isPR);
+function run() {
+  const progress = ora();
 
-    console.log("Filtering down the PRs");
-    console.log({ pullRequests });
+  const { repo, owner, board_id, to_deploy_pipeline } = getConfig();
 
-    return pullRequests;
-  })
-  .then(async pullRequests => {
-    console.log("Creating the release branch");
-    await githubClient.createBranch("master", releaseBranch);
+  const zenhubClient = new ZenhubAPI();
+  const githubClient = new GitHubAPI({ owner, repo });
 
-    const processPull = async pull => {
-      await githubClient.updatePullBase(pull.number, releaseBranch);
-      //  merge the PR into the release branch
-      await sleep(2000);
-      //
-      return await githubClient.mergePull(pull.number);
-    };
+  zenhubClient
+    .getBoard(board_id)
+    .then(board => {
+      progress.start("Getting board data");
+      return board.pipelines;
+    })
+    .then(pipelines => {
+      progress.start("Getting release pipeline");
+      return pipelines.find(pipeline => pipeline.name == to_deploy_pipeline);
+    })
+    .then(releasePipeline => {
+      progress.succeed();
+      progress.start("Getting issues in release pipeline");
+      return Promise.all(
+        releasePipeline.issues.map(zenhubIssue =>
+          githubClient.getIssue(zenhubIssue.issue_number)
+        )
+      );
+    })
+    .then(issues => {
+      progress.succeed();
+      progress.start("Filtering down the PRs");
+      const [pullRequests, normalIssues] = _.partition(issues, isPR);
+      return pullRequests;
+    })
+    .then(async pullRequests => {
+      progress.succeed();
+      progress.start("Creating the release branch");
+      await githubClient.createBranch("master", releaseBranch);
+      progress.succeed();
+      const processPull = async pull => {
+        progress.succeed();
+        progress.start(`Changing PR #${pull.number} base to release branch`);
+        await githubClient.updatePullBase(pull.number, releaseBranch);
+        //  merge the PR into the release branch
+        await sleep(2000);
+        progress.succeed();
+        progress.start(`Merging PR #${pull.number} into release branch`);
+        return await githubClient.mergePull(pull.number);
+      };
 
-    const operations = promiseSerial(
-      pullRequests.map(pull => () => processPull(pull))
-    );
+      const operations = promiseSerial(
+        pullRequests.map(pull => () => processPull(pull))
+      );
 
-    await operations;
-    return { pullRequests, releaseBranch };
-  })
-  .then(({ pullRequests, releaseBranch }) => {
-    githubClient.createPull(releaseBranch, "master", {
-      title: releaseBranch
+      await operations;
+      return { pullRequests, releaseBranch };
+    })
+    .then(({ pullRequests, releaseBranch }) => {
+      const releaseBody = pullRequests
+        .map(pull => {
+          const { url } = pull.pull_request;
+          let bodyFragment = url;
+          bodyFragment += "\n";
+          bodyFragment += pull.body;
+          return bodyFragment;
+        })
+        .join("\n\n");
+
+      progress.start("Creating PR from the release branch into master");
+      return githubClient.createPull(releaseBranch, "master", {
+        title: releaseBranch,
+        body: releaseBody
+      });
+    })
+    .then(releasePullRequest => {
+      progress.succeed();
+      progress.info(releasePullRequest.html_url);
+      progress.succeed("DONE!");
+    })
+    .catch(err => {
+      progress.fail(err.response.data.message);
     });
-  })
-  .catch(err => {
-    console.log(err);
-  });
-
-/// helpers
-
-function isPR(issue) {
-  return issue.pull_request && issue.pull_request.url;
 }
 
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-const promiseSerial = funcs =>
-  funcs.reduce(
-    (promise, func) =>
-      promise.then(result => func().then(Array.prototype.concat.bind(result))),
-    Promise.resolve([])
-  );
+run();

@@ -1,0 +1,6 @@
+zenhub:
+  board_id: "191766420"
+  to_deploy_pipeline: "New Issues"
+github:
+  repo: 'release-bot'
+  owner: 'krvajal'
