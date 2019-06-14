@@ -2,6 +2,10 @@ const axios = require("axios");
 const https = require("https");
 
 function GitHubAPI({ owner, repo }) {
+  if (!process.env.GITHUB_TOKEN) {
+    throw new Error("The env variable GITHUB_TOKEN is not defined");
+  }
+
   this.owner = owner;
   this.repo = repo;
   this.httpClient = axios.create({
