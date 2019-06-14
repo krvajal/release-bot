@@ -86,7 +86,11 @@ function run() {
       progress.succeed("DONE!");
     })
     .catch(err => {
-      progress.fail(err.response.data.message);
+      if (_.has(err, "response.data.message")) {
+        progress.fail(err.response.data.message);
+      } else {
+        err;
+      }
     });
 }
 
