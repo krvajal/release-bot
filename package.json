@@ -6,7 +6,7 @@
   "dependencies": {
     "axios": "^0.19.0",
     "dotenv": "^8.0.0",
-    "lodash": "^4.17.11",
+    "lodash": "^4.17.21",
     "ora": "^3.4.0",
     "yaml": "^1.6.0"
   }
